@@ -7,7 +7,7 @@ import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from oauth2client.service_account import ServiceAccountCredentials
-from main import extract_times_for_all_locations_firefox, format_results_for_discord
+from scrapedmv import extract_times_for_all_locations_firefox, format_results_for_discord
 
 # --- Email Setup ---
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
@@ -20,7 +20,7 @@ def get_email_list():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
 
-    sheet = client.open("Signup for Alerts Now").sheet1  # Your sheet name here
+    sheet = client.open("Signup for Alerts Now").sheet1  # Your actual sheet name
     email_list = sheet.col_values(6)  # Column F
     return [email for email in email_list if email and "@" in email]
 
@@ -45,7 +45,7 @@ def send_email_alert(message_content, recipient):
 if __name__ == "__main__":
     while True:
         print(f"Running scraper at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        
+
         # Run your scraping logic
         results = extract_times_for_all_locations_firefox(
             url="https://skiptheline.ncdot.gov",
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         )
 
         message = format_results_for_discord(results)
-        
+
         if message:
             print("Appointments found. Sending alerts...")
             for email in get_email_list():
