@@ -7,7 +7,6 @@ import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from oauth2client.service_account import ServiceAccountCredentials
-from scrapedmv import extract_times_for_all_locations_firefox, format_results_for_discord
 
 # --- Email Setup ---
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
