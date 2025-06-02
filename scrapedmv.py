@@ -7,7 +7,7 @@ import random
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from oauth2client.service_account import ServiceAccountCredentials
-from your_scraper_module import extract_times_for_all_locations_firefox, format_results_for_discord
+from main import extract_times_for_all_locations_firefox, format_results_for_discord
 
 # --- Email Setup ---
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
