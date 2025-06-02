@@ -1,79 +1,80 @@
 import os
-import json
 import time
-import gspread
 import smtplib
-import random
+import json
+import gspread
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from oauth2client.service_account import ServiceAccountCredentials
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
 
-# --- Email Setup ---
-EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+# Set up headless Firefox scraping
+def extract_times_for_all_locations_firefox():
+    options = Options()
+    options.headless = True
+    driver = webdriver.Firefox(options=options)
 
-# --- Get Emails from Google Sheet ---
+    url = "https://skiptheline.ncdot.gov/"
+    print("Navigating to URL:", url)
+    driver.get(url)
+    time.sleep(3)
+
+    page_text = driver.find_element(By.TAG_NAME, "body").text
+    driver.quit()
+
+    if "No appointments" in page_text:
+        return []
+    else:
+        return [page_text]
+
+# Format for email body
+
+def format_results_for_discord(results):
+    if not results:
+        return "No DMV appointments available at this time."
+    return "\n\n".join(results)
+
+# Read emails from Google Sheet (column F)
 def get_email_list():
-    creds_dict = json.loads(os.getenv("GOOGLE_CREDS_JSON"))
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    creds_json = json.loads(os.environ["GOOGLE_CREDS_JSON"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     client = gspread.authorize(creds)
 
-    sheet = client.open("Signup for Alerts Now").sheet1  # Your actual sheet name
-    email_list = sheet.col_values(6)  # Column F
-    return [email for email in email_list if email and "@" in email]
+    sheet = client.open_by_url(os.environ["SHEET_URL"]).sheet1
+    emails = sheet.col_values(6)[1:]  # Skip header, column F
+    return [email.strip() for email in emails if email.strip() != ""]
 
-# --- Send Email to a Single Recipient ---
-def send_email_alert(message_content, recipient):
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = recipient
+# Send alert email
+
+def send_email(to_email, message):
+    from_email = os.environ["EMAIL_ADDRESS"]
+    password = os.environ["EMAIL_PASSWORD"]
+
+    msg = MIMEText(message)
     msg["Subject"] = "DMV Appointment Alert"
+    msg["From"] = from_email
+    msg["To"] = to_email
 
-    msg.attach(MIMEText(message_content, "plain"))
-    try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
-            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            server.send_message(msg)
-        print(f"Email sent to {recipient}")
-    except Exception as e:
-        print(f"Failed to send email to {recipient}: {e}")
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(from_email, password)
+        server.sendmail(from_email, to_email, msg.as_string())
+        print(f"Email sent to: {to_email}")
 
-# --- Main Loop ---
+# Run scraper and send alerts
+
+def run():
+    print("Running scraper at", time.strftime("%Y-%m-%d %H:%M:%S"))
+    results = extract_times_for_all_locations_firefox()
+    message = format_results_for_discord(results)
+
+    for email in get_email_list():
+        send_email(email, message)
+
+# Run every 30 minutes in loop
 if __name__ == "__main__":
     while True:
-        print(f"Running scraper at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-
-        # Run your scraping logic
-        results = extract_times_for_all_locations_firefox(
-            url="https://skiptheline.ncdot.gov",
-            driver_path=os.getenv("GECKODRIVER_PATH"),
-            binary_path=os.getenv("FIREFOX_BINARY_PATH"),
-            allowed_locations_filter=None,
-            filtering_active=False,
-            date_filter_enabled=False,
-            start_date=None,
-            end_date=None,
-            time_filter_enabled=False,
-            start_time=None,
-            end_time=None
-        )
-
-        message = format_results_for_discord(results)
-
-        if message:
-            print("Appointments found. Sending alerts...")
-            for email in get_email_list():
-                send_email_alert(message, email)
-        else:
-            print("No appointments found.")
-
-        # Wait 30 minutes + random delay
-        sleep_seconds = 1800 + random.randint(10, 30)
-        print(f"Sleeping for {sleep_seconds // 60} minutes and {sleep_seconds % 60} seconds...")
-        try:
-            time.sleep(sleep_seconds)
-        except KeyboardInterrupt:
-            print("Script interrupted by user. Exiting.")
-            break
+        run()
+        print("Sleeping for 30 minutes...")
+        time.sleep(30 * 60)
